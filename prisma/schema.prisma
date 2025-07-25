@@ -27,6 +27,44 @@ model User {
   resetPasswordExpires DateTime?
   createdAt            DateTime  @default(now())
   updatedAt            DateTime  @updatedAt
+  orders               Order[]
 
   @@map("users")
+}
+
+model Order {
+  id    Int @id @default(autoincrement())
+  total Int
+
+  User   User? @relation(fields: [userId], references: [id])
+  userId Int?
+
+  @@map("orders")
+}
+
+model Student {
+  id              Int              @id @default(autoincrement())
+  name            String
+  student_courses StudentCourses[]
+
+  @@map("students")
+}
+
+model Course {
+  id              Int              @id @default(autoincrement())
+  title           String
+  student_courses StudentCourses[]
+
+  @@map("courses")
+}
+
+model StudentCourses {
+  id        Int     @id @default(autoincrement())
+  studentId Int
+  courseId  Int
+  Student   Student @relation(fields: [studentId], references: [id])
+  Course    Course  @relation(fields: [courseId], references: [id])
+
+  @@unique([studentId, courseId])
+  @@map("student_courses")
 }

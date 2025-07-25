@@ -24,7 +24,7 @@ export class UsersService {
   }
 
   findAll() {
-    return this.prismaSedrvice.user.findMany();
+    return this.prismaSedrvice.user.findMany({ include: { orders: true } });
   }
 
   findOne(id: number) {

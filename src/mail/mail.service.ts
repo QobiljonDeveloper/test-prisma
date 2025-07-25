@@ -1,6 +1,7 @@
 import { MailerService } from "@nestjs-modules/mailer";
 import { Injectable } from "@nestjs/common";
 import { PrismaService } from "../prisma/prisma.service";
+import { v4 as uuidv4 } from "uuid";
 
 @Injectable()
 export class MailService {
@@ -9,25 +10,22 @@ export class MailService {
     private readonly prisma: PrismaService
   ) {}
 
-  async sendActivationLink(userId: number) {
-    const user = await this.prisma.user.findUnique({ where: { id: userId } });
-    if (!user) throw new Error("Foydalanuvchi topilmadi");
-
-    const url = `${process.env.api_url}/api/auth/activate/${user.activationLink}`;
+  async sendActivationLink(email: string, activationLink: string) {
+    const url = `${process.env.api_url}/api/auth/activate/${activationLink}`;
 
     await this.mailerService.sendMail({
-      to: user.email,
+      to: email,
       subject: "Accountingizni faollashtiring",
       template: "./confirmation",
       context: {
-        name: user.name,
+        name: email, // yoki boshqa ism, agar kerak bo‘lsa
         url,
       },
     });
   }
 
   async sendResetPasswordLink(email: string, token: string) {
-    const url = `${process.env.frontend_url}/reset-password/${token}`;
+    const url = `${process.env.api_url}/reset-password/${token}`;
     await this.mailerService.sendMail({
       to: email,
       subject: "Parolni tiklash havolasi",

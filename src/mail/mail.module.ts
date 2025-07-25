@@ -1,37 +1,34 @@
-import { Module } from "@nestjs/common";
 import { MailerModule } from "@nestjs-modules/mailer";
-import { ConfigService } from "@nestjs/config";
-import { join } from "path";
 import { HandlebarsAdapter } from "@nestjs-modules/mailer/dist/adapters/handlebars.adapter";
+import { Module } from "@nestjs/common";
 import { MailService } from "./mail.service";
+import { join } from "path";
 import { PrismaModule } from "../prisma/prisma.module";
 
 @Module({
   imports: [
-    MailerModule.forRootAsync({
-      useFactory: async (config: ConfigService) => ({
-        transport: {
-          host: config.get<string>("smtp_host"),
-          port: config.get<number>("smtp_port"),
-          auth: {
-            user: config.get<string>("smtp_user"),
-            pass: config.get<string>("smtp_password"),
-          },
-        },
-        defaults: {
-          from: `"MyApp" <${config.get<string>("smtp_user")}>`,
-        },
-        template: {
-          dir: join(__dirname, "templates"),
-          adapter: new HandlebarsAdapter(),
-          options: {
-            strict: true,
-          },
-        },
-      }),
-      inject: [ConfigService],
-    }),
     PrismaModule,
+    MailerModule.forRoot({
+      transport: {
+        host: process.env.smtp_host,
+        port: parseInt(process.env.smtp_port!),
+        secure: false,
+        auth: {
+          user: process.env.smtp_user,
+          pass: process.env.smtp_password,
+        },
+      },
+      defaults: {
+        from: `"MyRestaurant" <${process.env.smtp_user}>`,
+      },
+      template: {
+        dir: join(__dirname, "templates"),
+        adapter: new HandlebarsAdapter(),
+        options: {
+          strict: true,
+        },
+      },
+    }),
   ],
   providers: [MailService],
   exports: [MailService],

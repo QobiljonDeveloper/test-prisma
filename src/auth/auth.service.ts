@@ -5,9 +5,10 @@ import {
 } from "@nestjs/common";
 import { JwtService } from "@nestjs/jwt";
 import { PrismaService } from "../prisma/prisma.service";
-import * as bcrypt from "bcrypt";
 import { MailService } from "../mail/mail.service";
 import { CreateUserDto, TokenDto } from "../users/dto";
+import * as bcrypt from "bcrypt";
+import { v4 as uuidv4 } from "uuid";
 
 @Injectable()
 export class AuthService {
@@ -17,48 +18,55 @@ export class AuthService {
     private readonly mailService: MailService
   ) {}
 
-  async register(dto: CreateUserDto): Promise<TokenDto> {
-    const candidate = await this.prisma.user.findUnique({
+  async register(dto: CreateUserDto): Promise<{ message: string }> {
+    const existing = await this.prisma.user.findUnique({
       where: { email: dto.email },
     });
-    if (candidate) throw new BadRequestException("User already exists");
+    if (existing) throw new BadRequestException("Bunday foydalanuvchi mavjud");
 
-    const hashPassword = await bcrypt.hash(dto.password!, 10);
-    const activationLink = Math.random().toString(36).substring(2, 15);
+    const hashedPassword = await bcrypt.hash(dto.password!, 10);
+    const activationLink = uuidv4();
 
     const user = await this.prisma.user.create({
       data: {
         email: dto.email,
         name: dto.name,
-        hashedPassword: hashPassword,
+        hashedPassword,
         activationLink,
         isActive: false,
       },
     });
 
-    await this.mailService.sendActivationLink(user.id);
-    return this.generateTokens(user.id, user.email);
+    await this.mailService.sendActivationLink(user.email, activationLink);
+
+    return { message: "Aktivatsiya havolasi emailga yuborildi" };
   }
 
   async login(email: string, password: string): Promise<TokenDto> {
     const user = await this.prisma.user.findUnique({ where: { email } });
-    if (!user) throw new UnauthorizedException("User not found");
+    if (!user) throw new UnauthorizedException("Foydalanuvchi topilmadi");
+    if (!user.isActive)
+      throw new UnauthorizedException("Hisob aktivlashtirilmagan");
 
     const isMatch = await bcrypt.compare(password, user.hashedPassword);
-    if (!isMatch) throw new UnauthorizedException("Wrong password");
+    if (!isMatch) throw new UnauthorizedException("Parol noto‘g‘ri");
 
     return this.generateTokens(user.id, user.email);
+  }
+
+  async logout(): Promise<{ message: string }> {
+    return { message: "Tizimdan chiqildi" };
   }
 
   async activate(activationLink: string): Promise<void> {
     const user = await this.prisma.user.findFirst({
       where: { activationLink },
     });
-    if (!user) throw new BadRequestException("Invalid activation link");
+    if (!user) throw new BadRequestException("Noto‘g‘ri aktivatsiya havolasi");
 
     await this.prisma.user.update({
       where: { id: user.id },
-      data: { isActive: true },
+      data: { isActive: true, activationLink: null },
     });
   }
 
@@ -71,19 +79,19 @@ export class AuthService {
       const user = await this.prisma.user.findUnique({
         where: { id: payload.sub },
       });
-      if (!user) throw new UnauthorizedException("User not found");
+      if (!user) throw new UnauthorizedException("Foydalanuvchi topilmadi");
 
       return this.generateTokens(user.id, user.email);
     } catch {
-      throw new UnauthorizedException("Invalid refresh token");
+      throw new UnauthorizedException("Yaroqsiz refresh token");
     }
   }
 
   async forgotPassword(email: string): Promise<{ message: string }> {
     const user = await this.prisma.user.findUnique({ where: { email } });
-    if (!user) throw new BadRequestException("User not found");
+    if (!user) throw new BadRequestException("Foydalanuvchi topilmadi");
 
-    const token = Math.random().toString(36).substring(2, 15);
+    const token = uuidv4();
     const expires = new Date(Date.now() + 1000 * 60 * 30); // 30 daqiqa
 
     await this.prisma.user.update({
@@ -96,33 +104,7 @@ export class AuthService {
 
     await this.mailService.sendResetPasswordLink(user.email, token);
 
-    return { message: "Parolni tiklash havolasi yuborildi" };
-  }
-  
-  async resetPassword(
-    token: string,
-    newPassword: string
-  ): Promise<{ message: string }> {
-    const user = await this.prisma.user.findFirst({
-      where: {
-        resetPasswordToken: token,
-        resetPasswordExpires: { gte: new Date() },
-      },
-    });
-    if (!user) throw new BadRequestException("Token invalid or expired");
-
-    const hashed = await bcrypt.hash(newPassword, 10);
-
-    await this.prisma.user.update({
-      where: { id: user.id },
-      data: {
-        hashedPassword: hashed,
-        resetPasswordToken: null,
-        resetPasswordExpires: null,
-      },
-    });
-
-    return { message: "Parol muvaffaqiyatli yangilandi" };
+    return { message: "Parolni tiklash havolasi emailga yuborildi" };
   }
 
   private async generateTokens(
