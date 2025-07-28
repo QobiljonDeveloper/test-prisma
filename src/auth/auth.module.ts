@@ -6,6 +6,10 @@ import { PrismaModule } from "../prisma/prisma.module";
 import { UsersModule } from "../users/users.module";
 import { MailModule } from "../mail/mail.module";
 import { ConfigModule, ConfigService } from "@nestjs/config";
+import {
+  AccessTokenStrategy,
+  RefreshTokenCookieStrategy,
+} from "../common/strategoes";
 
 @Module({
   imports: [
@@ -25,6 +29,6 @@ import { ConfigModule, ConfigService } from "@nestjs/config";
     MailModule,
   ],
   controllers: [AuthController],
-  providers: [AuthService],
+  providers: [AuthService, AccessTokenStrategy, RefreshTokenCookieStrategy],
 })
 export class AuthModule {}

@@ -9,6 +9,7 @@ import { MailService } from "../mail/mail.service";
 import { CreateUserDto, TokenDto } from "../users/dto";
 import * as bcrypt from "bcrypt";
 import { v4 as uuidv4 } from "uuid";
+import { JwtPayload, ResponseFields } from "../common/types";
 
 @Injectable()
 export class AuthService {
@@ -18,7 +19,7 @@ export class AuthService {
     private readonly mailService: MailService
   ) {}
 
-  async register(dto: CreateUserDto): Promise<{ message: string }> {
+  async register(dto: CreateUserDto): Promise<ResponseFields> {
     const existing = await this.prisma.user.findUnique({
       where: { email: dto.email },
     });
@@ -33,25 +34,35 @@ export class AuthService {
         name: dto.name,
         hashedPassword,
         activationLink,
-        isActive: false,
+        is_active: false,
       },
     });
 
     await this.mailService.sendActivationLink(user.email, activationLink);
 
-    return { message: "Aktivatsiya havolasi emailga yuborildi" };
+    const tokens = await this.generateTokens(
+      user.id,
+      user.email,
+      user.is_active
+    );
+
+    return {
+      message: "Foydalanuvchi tizimga muvaffaqiyatli kiritildi",
+      userId: user.id,
+      accessToken: tokens.accessToken,
+    };
   }
 
   async login(email: string, password: string): Promise<TokenDto> {
     const user = await this.prisma.user.findUnique({ where: { email } });
     if (!user) throw new UnauthorizedException("Foydalanuvchi topilmadi");
-    if (!user.isActive)
+    if (!user.is_active)
       throw new UnauthorizedException("Hisob aktivlashtirilmagan");
 
     const isMatch = await bcrypt.compare(password, user.hashedPassword);
     if (!isMatch) throw new UnauthorizedException("Parol noto‘g‘ri");
 
-    return this.generateTokens(user.id, user.email);
+    return this.generateTokens(user.id, user.email, user.is_active);
   }
 
   async logout(): Promise<{ message: string }> {
@@ -66,7 +77,7 @@ export class AuthService {
 
     await this.prisma.user.update({
       where: { id: user.id },
-      data: { isActive: true, activationLink: null },
+      data: { is_active: true, activationLink: null },
     });
   }
 
@@ -77,11 +88,11 @@ export class AuthService {
       });
 
       const user = await this.prisma.user.findUnique({
-        where: { id: payload.sub },
+        where: { id: payload.id },
       });
       if (!user) throw new UnauthorizedException("Foydalanuvchi topilmadi");
 
-      return this.generateTokens(user.id, user.email);
+      return this.generateTokens(user.id, user.email, user.is_active);
     } catch {
       throw new UnauthorizedException("Yaroqsiz refresh token");
     }
@@ -109,9 +120,10 @@ export class AuthService {
 
   private async generateTokens(
     userId: number,
-    email: string
+    email: string,
+    is_active: boolean
   ): Promise<TokenDto> {
-    const payload = { sub: userId, email };
+    const payload: JwtPayload = { id: userId, email, is_active };
 
     const [accessToken, refreshToken] = await Promise.all([
       this.jwtService.signAsync(payload, {

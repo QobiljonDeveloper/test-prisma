@@ -11,6 +11,7 @@ import {
 import { AuthService } from "./auth.service";
 import { CreateUserDto, LoginUserDto, ForgotPasswordDto } from "../users/dto";
 import { ApiTags, ApiOperation, ApiResponse } from "@nestjs/swagger";
+import { ResponseFields } from "../common/types";
 
 @ApiTags("Authentication")
 @Controller("auth")
@@ -19,7 +20,7 @@ export class AuthController {
 
   @Post("register")
   @ApiOperation({ summary: "Foydalanuvchini ro‘yxatdan o‘tkazish" })
-  async register(@Body() dto: CreateUserDto): Promise<{ message: string }> {
+  async register(@Body() dto: CreateUserDto): Promise<ResponseFields> {
     return this.authService.register(dto);
   }
 

@@ -21,7 +21,7 @@ model User {
   phone                String?   @unique @db.VarChar(15)
   hashedPassword       String
   hashedRefreshToken   String?
-  isActive             Boolean   @default(false)
+  is_active           Boolean   @default(true)
   activationLink       String?
   resetPasswordToken   String?
   resetPasswordExpires DateTime?
