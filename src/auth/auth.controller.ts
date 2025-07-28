@@ -2,16 +2,20 @@ import {
   Controller,
   Post,
   Body,
-  Query,
   HttpCode,
   HttpStatus,
   Get,
   Param,
+  UseGuards,
+  Res,
 } from "@nestjs/common";
 import { AuthService } from "./auth.service";
 import { CreateUserDto, LoginUserDto, ForgotPasswordDto } from "../users/dto";
 import { ApiTags, ApiOperation, ApiResponse } from "@nestjs/swagger";
 import { ResponseFields } from "../common/types";
+import { RefreshTokenGuard } from "../common/guards";
+import { GetCurrentUser, GetCurrentUserId } from "../common/decorators";
+import { Response } from "express";
 
 @ApiTags("Authentication")
 @Controller("auth")
@@ -39,10 +43,32 @@ export class AuthController {
     return { message: "Hisob muvaffaqiyatli aktivlashtirildi" };
   }
 
+  @UseGuards(RefreshTokenGuard)
+  @Post("logout")
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: "Foydalanuvchini tizimdan chiqish" })
+  @ApiResponse({ status: 200, description: "Tizimdan chiqildi" })
+  @ApiResponse({ status: 200, description: "Tizimdan chiqildi" })
+  async logout(
+    @GetCurrentUserId() userId: number,
+    @Res({ passthrough: true }) res: Response
+  ): Promise<{ message: string }> {
+    console.log(userId);
+    await this.authService.logout(userId, res);
+    return { message: "Tizimdan chiqildi" };
+  }
+
+  @UseGuards(RefreshTokenGuard)
   @Post("refresh")
   @HttpCode(HttpStatus.OK)
-  async refresh(@Body() body: { token: string }) {
-    return this.authService.refreshToken(body.token);
+  @ApiOperation({ summary: "Tokenni yangilash" })
+  @ApiResponse({ status: 200, description: "Tokenlar yangilandi" })
+  async refresh(
+    @GetCurrentUserId() userId: number,
+    @GetCurrentUser("refreshToken") refreshToken: string,
+    @Res({ passthrough: true }) res: Response
+  ): Promise<ResponseFields> {
+    return this.authService.refresh_token(userId, refreshToken, res);
   }
 
   @Post("forgot-password")

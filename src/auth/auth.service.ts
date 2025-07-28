@@ -2,6 +2,7 @@ import {
   Injectable,
   UnauthorizedException,
   BadRequestException,
+  ForbiddenException,
 } from "@nestjs/common";
 import { JwtService } from "@nestjs/jwt";
 import { PrismaService } from "../prisma/prisma.service";
@@ -10,6 +11,12 @@ import { CreateUserDto, TokenDto } from "../users/dto";
 import * as bcrypt from "bcrypt";
 import { v4 as uuidv4 } from "uuid";
 import { JwtPayload, ResponseFields } from "../common/types";
+import { Response } from "express";
+
+interface Tokens {
+  accessToken: string;
+  refreshToken: string;
+}
 
 @Injectable()
 export class AuthService {
@@ -65,8 +72,25 @@ export class AuthService {
     return this.generateTokens(user.id, user.email, user.is_active);
   }
 
-  async logout(): Promise<{ message: string }> {
-    return { message: "Tizimdan chiqildi" };
+  async logout(userId: number, res: Response): Promise<boolean> {
+    const user = await this.prisma.user.updateMany({
+      where: {
+        id: userId,
+        hashedRefreshToken: {
+          not: null,
+        },
+      },
+      data: {
+        hashedRefreshToken: null,
+      },
+    });
+
+    if (user.count === 0) {
+      throw new ForbiddenException("Access denied");
+    }
+
+    res.clearCookie("refreshToken");
+    return true;
   }
 
   async activate(activationLink: string): Promise<void> {
@@ -81,21 +105,45 @@ export class AuthService {
     });
   }
 
-  async refreshToken(token: string): Promise<TokenDto> {
-    try {
-      const payload = await this.jwtService.verifyAsync(token, {
-        secret: process.env.JWT_REFRESH_SECRET,
-      });
+  async refresh_token(
+    userId: number,
+    refreshToken: string,
+    res: Response
+  ): Promise<ResponseFields> {
+    const user = await this.prisma.user.findUnique({ where: { id: userId } });
+    if (!user || !user.hashedRefreshToken)
+      throw new UnauthorizedException("User topilmadi");
 
-      const user = await this.prisma.user.findUnique({
-        where: { id: payload.id },
-      });
-      if (!user) throw new UnauthorizedException("Foydalanuvchi topilmadi");
+    const rtMatches = await bcrypt.compare(
+      refreshToken,
+      user.hashedRefreshToken
+    );
+    if (!rtMatches) throw new UnauthorizedException("Refresh token noto‘g‘ri");
 
-      return this.generateTokens(user.id, user.email, user.is_active);
-    } catch {
-      throw new UnauthorizedException("Yaroqsiz refresh token");
-    }
+    const tokens = await this.generateTokens(
+      user.id,
+      user.email,
+      user.is_active
+    );
+
+    const hashedRefreshToken = await bcrypt.hash(tokens.refreshToken, 7);
+    await this.prisma.user.update({
+      where: { id: userId },
+      data: { hashedRefreshToken },
+    });
+
+    res.cookie("refreshToken", tokens.refreshToken, {
+      maxAge: +process.env.REFRESH_TOKEN_TIME!,
+      httpOnly: true,
+      secure: process.env.NODE_ENV === "production",
+      sameSite: "strict",
+    });
+
+    return {
+      message: "Tokenlar yangilandi",
+      userId: user.id,
+      accessToken: tokens.accessToken,
+    };
   }
 
   async forgotPassword(email: string): Promise<{ message: string }> {
@@ -103,7 +151,7 @@ export class AuthService {
     if (!user) throw new BadRequestException("Foydalanuvchi topilmadi");
 
     const token = uuidv4();
-    const expires = new Date(Date.now() + 1000 * 60 * 30); // 30 daqiqa
+    const expires = new Date(Date.now() + 1000 * 60 * 30);
 
     await this.prisma.user.update({
       where: { id: user.id },

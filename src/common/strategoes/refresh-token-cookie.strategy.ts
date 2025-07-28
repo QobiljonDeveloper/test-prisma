@@ -26,6 +26,7 @@ export class RefreshTokenCookieStrategy extends PassportStrategy(
 
   validate(req: Request, payload: JwtPayload): JwtPayloadWIthRefreshToken {
     const refreshToken = req.cookies.refreshToken;
+    console.log(refreshToken);
     if (!refreshToken) {
       throw new ForbiddenException("Refresh token noto'g'ri");
     }

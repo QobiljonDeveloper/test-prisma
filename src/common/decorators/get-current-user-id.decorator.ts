@@ -7,8 +7,9 @@ import { JwtPayload } from "../types";
 
 export const GetCurrentUserId = createParamDecorator(
   (_: undefined, context: ExecutionContext): number => {
+    console.log(1)
     const request = context.switchToHttp().getRequest();
-    const user = request.euser as JwtPayload;
+    const user = request.user as JwtPayload;
     if (!user) {
       throw new ForbiddenException("Token noto'g'ri");
     }
